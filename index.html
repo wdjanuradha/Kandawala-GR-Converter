@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kandawala GR → Google Maps (Military Grid Converter)</title>
+
+  <!-- Minimal modern styling (dark 'high-tech' military look) -->
+  <style>
+    :root{
+      --bg:#071017; --panel:#0b1a23; --accent:#39FF14; --muted:#7da6a6; --glass:rgba(255,255,255,0.03);
+      --card:#082024; --danger:#ff4646; --soft:#0f2a2a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#031016 0%, #081621 60%);color:#d6f6ef}
+    .wrap{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;gap:16px}
+    .logo{width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,#08343a,#052428);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+    .logo b{color:var(--accent);font-size:18px}
+    h1{margin:0;font-size:20px}
+    p.lead{color:var(--muted);margin:6px 0 18px}
+
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:20px}
+    .card{background:var(--panel);border-radius:12px;padding:14px;box-shadow:0 6px 30px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+    label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+    input[type=text],select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:inherit;font-size:15px}
+    .row{display:flex;gap:8px}
+    .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);cursor:pointer}
+    .btn.primary{background:linear-gradient(90deg,#032a2a,#073b3b);border-color:rgba(57,255,20,0.12);box-shadow:0 8px 18px rgba(57,255,20,0.04)}
+    .muted{color:var(--muted);font-size:13px}
+    .result{font-family:monospace;background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent);padding:10px;border-radius:8px;margin-top:10px}
+    .tryalt{margin-top:8px;color:var(--muted);font-size:13px}
+    .mapwrap{height:560px;border-radius:10px;overflow:hidden}
+    .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .k{background:var(--soft);padding:8px 10px;border-radius:8px;font-size:13px;color:var(--muted)}
+    footer{margin-top:16px;color:var(--muted);font-size:13px}
+    a.link{color:var(--accent);text-decoration:none}
+
+    /* small screens */
+    @media (max-width:980px){.grid{grid-template-columns:1fr;}.mapwrap{height:420px}}
+  </style>
+
+  <!-- Include proj4js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js" integrity="sha512-5kQx0d2h5QbVb8q4Ew+1dXrP3iX2H6kY2mX3+z0QeJg3s7Y8TnXk0X8m2p6V3G6cQKf8jzQ6bY0Gk7j3Vw2fw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- Leaflet for quick preview map (no API key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo"><b>K-GR</b></div>
+      <div>
+        <h1>Kandawala Grid → Google Maps (Military Converter)</h1>
+        <p class="lead">Enter a 6-figure or 8-figure Kandawala Grid Reference (military style, leading digits omitted). Tool auto-expands, converts using official Kandawala datum &amp; TOWGS84 shift, and shows map preview + copyable WGS84 coords.</p>
+      </div>
+    </header>
+
+    <div class="grid" style="margin-top:18px">
+      <div class="card">
+        <div>
+          <label>Enter Grid Reference (6 or 8 figures) — military style (e.g. <em>682717</em> or <em>68217170</em>)</label>
+          <input id="grInput" type="text" placeholder="682717" />
+        </div>
+
+        <div style="margin-top:12px" class="row">
+          <div style="flex:1">
+            <label>Preferred Easting band (if you know)</label>
+            <select id="eBand"><option value="auto">Auto (suggest)</option><option value="1">1xx,xxx (west)</option><option value="2">2xx,xxx (east)</option></select>
+          </div>
+          <div style="width:120px">
+            <label>Precision</label>
+            <select id="precision"><option value="6">6-figure (100 m)</option><option value="8">8-figure (10 m)</option></select>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="row">
+          <button id="convert" class="btn primary">Convert & Show</button>
+          <button id="both" class="btn">Show Both Candidates</button>
+          <button id="copyBtn" class="btn">Copy Lat/Lon</button>
+        </div>
+
+        <div id="results" class="result" aria-live="polite" style="display:none">
+          <div><strong>Expanded Easting / Northing:</strong> <span id="EN"></span></div>
+          <div style="margin-top:8px"><strong>WGS84 (Decimal):</strong> <span id="latlon"></span></div>
+          <div style="margin-top:8px"><strong>WGS84 (DMS):</strong> <span id="dms"></span></div>
+          <div class="kpi">
+            <div class="k" id="zoneHint">Projection: Kandawala / Sri Lanka Grid (EPSG:5234)</div>
+            <div class="k" id="shiftHint">Datum shift: TOWGS84[-97,787,86]</div>
+            <div class="k" id="accuracy">Accuracy: —</div>
+          </div>
+
+          <div class="tryalt" id="altNote"></div>
+          <div style="margin-top:8px">
+            <a id="gmLink" class="link" target="_blank">Open in Google Maps</a> • <a id="kmlLink" class="link" download="point.kml">Download KML</a>
+          </div>
+        </div>
+
+        <footer>
+          <small>Built for tactical use — shows candidate bands, uses proj4 with Kandawala params. Preview map uses OpenStreetMap (Leaflet). You may publish this as a GitHub Pages site (index.html).</small>
+        </footer>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>Map Preview</strong>
+            <div class="muted">Quick preview — no API key required</div>
+          </div>
+          <div class="muted">Marker shows the converted lat/lon</div>
+        </div>
+
+        <div style="margin-top:12px" class="mapwrap" id="map"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Define Kandawala projection (EPSG:5234) in proj4js
+    // Parameters translated from official Kandawala definition
+    proj4.defs("EPSG:5234", "+proj=tmerc +lat_0=7 +lon_0=80.77171333333333 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86 +units=m +no_defs");
+
+    // Convenience: WGS84
+    const P5234 = proj4('EPSG:5234');
+    const P4326 = proj4('EPSG:4326');
+
+    // Leaflet map setup
+    const map = L.map('map', {zoomControl:true, attributionControl:true}).setView([7.5,80.6],8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+    let marker = null;
+
+    function toDMS(lat,lon){
+      function dms(deg){
+        const d = Math.floor(Math.abs(deg));
+        const m = Math.floor((Math.abs(deg)-d)*60);
+        const s = Math.round(((Math.abs(deg)-d)*60 - m)*60);
+        return `${d}\u00B0${m}'${s}\"`;
+      }
+      return `${dms(lat)} ${lat>=0?'N':'S'}, ${dms(lon)} ${lon>=0?'E':'W'}`;
+    }
+
+    function expandGR(grString, precision, eBandAuto){
+      // Remove non-digits
+      const digits = grString.replace(/\D/g,'');
+      if(!(digits.length===6 || digits.length===8)) throw 'Enter 6 or 8 digit grid reference (military style)';
+      const half = digits.length/2;
+      const ex = digits.slice(0,half);
+      const ny = digits.slice(half);
+
+      // If 3 digits -> hundreds: E.g. 682 -> 68200 base then add leading hundred-thousands digit
+      // If 4 digits -> ten-meters
+      let ePart, nPart;
+      if(half===3){
+        // 6-figure -> precision 100m
+        ePart = parseInt(ex,10) * 100;
+        nPart = parseInt(ny,10) * 100;
+      } else {
+        ePart = parseInt(ex,10) * 10;
+        nPart = parseInt(ny,10) * 10;
+      }
+
+      // Candidate leading digits: 0..3; in Sri Lanka eastings usually in 7xxx - 33xxxx, so leading hundred-thousands digit is 0..3
+      // Military style omits hundred-thousands digit. Typical Kandawala east bands used: 1 or 2 (i.e. 1xx,xxx or 2xx,xxx)
+      const candidates = [];
+      // We'll generate two pragmatic candidates: prefix 1 and prefix 2
+      candidates.push({E:100000 + ePart, N: Math.round(nPart + 0)});
+      candidates.push({E:200000 + ePart, N: Math.round(nPart + 0)});
+
+      // If user forced a band (1 or 2), filter
+      if(eBandAuto==='1') return [candidates[0]];
+      if(eBandAuto==='2') return [candidates[1]];
+      return candidates;
+    }
+
+    function convertENtoLatLon(E,N){
+      // proj4 expects [E, N] and returns [lon, lat]
+      const [lon, lat] = proj4('EPSG:5234','EPSG:4326',[E,N]);
+      return {lat: +lat.toFixed(6), lon: +lon.toFixed(6)};
+    }
+
+    function buildKML(lat,lon,label){
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n  <Placemark>\n    <name>${label}</name>\n    <Point><coordinates>${lon},${lat},0</coordinates></Point>\n  </Placemark>\n</kml>`;
+    }
+
+    document.getElementById('convert').addEventListener('click', ()=>{
+      const gr = document.getElementById('grInput').value.trim();
+      const pref = document.getElementById('eBand').value;
+      try{
+        const candidates = expandGR(gr, document.getElementById('precision').value, pref);
+        // Use first candidate as default
+        const chosen = candidates[0];
+        const latlon = convertENtoLatLon(chosen.E, chosen.N);
+
+        document.getElementById('EN').textContent = `E = ${chosen.E.toLocaleString()} m , N = ${chosen.N.toLocaleString()} m`;
+        document.getElementById('latlon').textContent = `${latlon.lat}, ${latlon.lon}`;
+        document.getElementById('dms').textContent = toDMS(latlon.lat, latlon.lon);
+        document.getElementById('results').style.display='block';
+        document.getElementById('accuracy').textContent = (document.getElementById('precision').value==='6')? '≈100 m' : '≈10 m';
+        document.getElementById('altNote').textContent = (candidates.length>1)? 'Multiple candidate easting bands detected — use "Show Both Candidates" if uncertain or select preferred band.' : '';
+
+        const gmlink = `https://www.google.com/maps?q=${latlon.lat},${latlon.lon}`;
+        document.getElementById('gmLink').href = gmlink;
+
+        // KML link creation via blob
+        const kml = buildKML(latlon.lat, latlon.lon, `GR ${gr}`);
+        const blob = new Blob([kml], {type:'application/vnd.google-earth.kml+xml'});
+        const url = URL.createObjectURL(blob);
+        const kmlLink = document.getElementById('kmlLink');
+        kmlLink.href = url;
+
+        // Map marker
+        if(marker) map.removeLayer(marker);
+        marker = L.marker([latlon.lat, latlon.lon]).addTo(map).bindPopup(`<b>GR ${gr}</b><br>${latlon.lat}, ${latlon.lon}`).openPopup();
+        map.setView([latlon.lat, latlon.lon], 16);
+
+      } catch(err){
+        alert('Error: '+err);
+      }
+    });
+
+    document.getElementById('both').addEventListener('click', ()=>{
+      const gr = document.getElementById('grInput').value.trim();
+      try{
+        const candidates = expandGR(gr, document.getElementById('precision').value, 'auto');
+        // Show both markers and list
+        document.getElementById('results').style.display='block';
+        const list = candidates.map((c,idx)=>{
+          const latlon = convertENtoLatLon(c.E, c.N);
+          return {E:c.E,N:c.N,latlon};
+        });
+        // display first as default
+        document.getElementById('EN').textContent = list.map((l,i)=>`[Option ${i+1}] E=${l.E}, N=${l.N}`).join('  |  ');
+        document.getElementById('latlon').textContent = list.map((l,i)=>`[Opt ${i+1}] ${l.latlon.lat}, ${l.latlon.lon}`).join('  |  ');
+        document.getElementById('dms').textContent = list.map((l,i)=>`[Opt ${i+1}] ${toDMS(l.latlon.lat,l.latlon.lon)}`).join('\n');
+        document.getElementById('accuracy').textContent = (document.getElementById('precision').value==='6')? '≈100 m' : '≈10 m';
+        document.getElementById('altNote').textContent = 'Both candidate east-bands shown on map. Choose the correct one based on context/sheet.';
+
+        // clear markers
+        if(marker) map.removeLayer(marker);
+        const group = [];
+        list.forEach((l,i)=>{
+          const m = L.marker([l.latlon.lat,l.latlon.lon]).addTo(map).bindPopup(`<b>Option ${i+1}</b><br>E=${l.E} N=${l.N}<br>${l.latlon.lat},${l.latlon.lon}`);
+          group.push(m);
+        });
+        // fit
+        const g = L.featureGroup(group);
+        map.fitBounds(g.getBounds().pad(0.6));
+
+        // gm link to first by default
+        document.getElementById('gmLink').href = `https://www.google.com/maps?q=${list[0].latlon.lat},${list[0].latlon.lon}`;
+
+      } catch(err){ alert('Error: '+err); }
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', ()=>{
+      const txt = document.getElementById('latlon').textContent;
+      if(!txt) return alert('No converted coordinates to copy.');
+      navigator.clipboard.writeText(txt).then(()=>{
+        alert('Copied: '+txt);
+      });
+    });
+
+    // quick sample: populate with example
+    document.getElementById('grInput').value = '682717';
+  </script>
+</body>
+</html>
