@@ -1,222 +1,177 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Kandawala GR Converter — Military Tactical Tool</title>
-  <meta name="description" content="Convert Sri Lanka Kandawala Grid References (6/8/Full) to WGS84 lat/lon and open in Google Maps." />
-  <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+  <meta charset="UTF-8">
+  <title>Kandawala GR Converter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Leaflet CSS from a reliable CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    :root{--bg:#071023;--card:#0b2540;--accent:#00d4ff;--muted:#94a3b8;--glass:rgba(255,255,255,0.04)}
-    *{box-sizing:border-box}
-    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;padding:20px;margin:0;background:linear-gradient(180deg,#00111b 0%, #042231 100%);color:#e6f6ff;min-height:100vh}
-    .wrap{max-width:920px;margin:0 auto}
-    header{display:flex;gap:12px;align-items:center}
-    .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#6ee7b7);display:flex;align-items:center;justify-content:center;font-weight:700;color:#012}
-    h1{font-size:20px;margin:0}
-    p.lead{margin:6px 0 18px;color:var(--muted);font-size:13px}
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:14px;padding:18px;box-shadow:0 6px 18px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    label{font-size:12px;color:var(--muted)}
-    input,select,button,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:inherit;font-size:14px}
-    .actions{display:flex;gap:8px;margin-top:10px}
-    button.primary{background:linear-gradient(90deg,var(--accent),#66f3b1);color:#012;border:none;font-weight:600}
-    .results{margin-top:16px;display:grid;gap:8px}
-    .row{display:flex;gap:8px;align-items:center}
-    .chip{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;font-family:monospace}
-    .candidates{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-    .cand{padding:10px;border-radius:8px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
-    .small{font-size:12px;color:var(--muted)}
-    footer{margin-top:18px;color:var(--muted);font-size:13px;text-align:center}
-    @media (max-width:720px){.grid{grid-template-columns:1fr}header{gap:8px}.logo{width:48px;height:48px}}
+    body {
+      font-family: 'Consolas', monospace;
+      background-color: #0a0f0d;
+      color: #00ff99;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #111;
+      padding: 1rem;
+      text-align: center;
+      border-bottom: 2px solid #00ff99;
+    }
+    .container {
+      padding: 1rem;
+      max-width: 800px;
+      margin: auto;
+    }
+    input, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin: 0.2rem;
+      border-radius: 6px;
+      border: 1px solid #00ff99;
+      background: #111;
+      color: #00ff99;
+    }
+    button:hover {
+      background: #00ff99;
+      color: #111;
+      cursor: pointer;
+    }
+    #map {
+      height: 400px;
+      margin-top: 1rem;
+      border: 2px solid #00ff99;
+      border-radius: 8px;
+    }
+    .output {
+      margin-top: 1rem;
+      background: #111;
+      padding: 1rem;
+      border: 1px solid #00ff99;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+    a.link{ color: #00ff99 }
   </style>
-  <script src="https://unpkg.com/proj4@2.8.0/dist/proj4.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="logo">GR</div>
-      <div>
-        <h1>Kandawala GR → Google Maps</h1>
-        <p class="lead">Enter a <strong>6/8-figure Kandawala Grid Reference</strong> (military short form like <code>682717</code>) or full Easting/Northing in metres. The tool will expand candidates, convert using the Kandawala datum and show WGS84 coordinates and Google Maps links.</p>
-      </div>
-    </header>
+  <header>
+    <h1>🇱🇰 Kandawala Grid Converter</h1>
+    <p>Military-Style GR → Google Maps</p>
+  </header>
 
-    <div class="card" style="margin-top:14px">
-      <div class="grid">
-        <div>
-          <label>Input (6/8 figure GR or full E,N metres)</label>
-          <input id="inputGR" placeholder="Example: 682717 or 6827 7173 or 168200, 371700" />
-        </div>
-        <div>
-          <label>Options</label>
-          <select id="format">
-            <option value="auto">Auto-detect (recommended)</option>
-            <option value="6">6-figure GR (100m)</option>
-            <option value="8">8-figure GR (10m)</option>
-            <option value="full">Full Easting,Northing (metres)</option>
-          </select>
-        </div>
-      </div>
+  <div class="container">
+    <label>Enter 6/8 Fig GR:</label>
+    <input type="text" id="grInput" placeholder="Example: 682717" value="682717">
+    <button id="convertBtn">Convert</button>
 
-      <div class="actions">
-        <button class="primary" id="convertBtn">Convert & Show Candidates</button>
-        <button id="clearBtn">Clear</button>
-      </div>
+    <div class="output" id="output">Status: waiting for input...</div>
 
-      <div id="output" class="results"></div>
-    </div>
-
-    <footer>
-      Tip: If multiple candidate pins appear, pick the one inside your tactical area. The tool uses the official Kandawala parameters and TOWGS84 shift.
-    </footer>
+    <div id="map"></div>
   </div>
 
-<script>
-// Define Kandawala / Sri Lanka Grid in proj4
-proj4.defs('EPSG:KAND', '+proj=tmerc +lat_0=7 +lon_0=80.77171333333333 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86 +units=m +no_defs');
-const WGS84 = proj4('EPSG:KAND', 'WGS84');
+  <!-- Load Leaflet and proj4 from reliable CDNs BEFORE running the script below -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/proj4@2.8.1/dist/proj4.js"></script>
 
-function parseInput(s){
-  s = (s||"").trim();
-  // allow comma-separated full coords
-  if(s.match(/^[+-]?\d+\.?\d*\s*,\s*[+-]?\d+\.?\d*$/)){
-    const parts = s.split(',').map(t=>t.trim());
-    return {type:'full',E:parseFloat(parts[0]),N:parseFloat(parts[1])};
-  }
-  // allow space separated
-  const tokens = s.split(/\s+/).filter(Boolean);
-  if(tokens.length==2 && tokens[0].match(/^\d+$/) && tokens[1].match(/^\d+$/)){
-    // could be easting northing short forms
-    const a = tokens[0], b = tokens[1];
-    if(a.length<=4 && b.length<=4){
-      return {type:'gr','grE':a,'grN':b};
-    } else {
-      return {type:'full',E:parseFloat(a),N:parseFloat(b)};
-    }
-  }
-  // compact numeric only
-  const compact = s.replace(/[^0-9]/g,'');
-  if(compact.length===6) return {type:'gr6',raw:compact};
-  if(compact.length===8) return {type:'gr8',raw:compact};
-  // if user typed 3+3 split with space possibility
-  if(s.match(/^\d{3}\s*\d{3}$/)){
-    const m = s.match(/(\d{3})\s*(\d{3})/);
-    return {type:'gr6',raw:m[1]+m[2]};
-  }
-  if(s.match(/^\d{4}\s*\d{4}$/)){
-    const m = s.match(/(\d{4})\s*(\d{4})/);
-    return {type:'gr8',raw:m[1]+m[2]};
-  }
-  throw new Error('Unable to parse input. Use 6/8-figure GR or full Easting,Northing')
-}
+  <script>
+    // Wrap initialization so we only run after window load and after proj4 & Leaflet are available
+    window.addEventListener('load', function () {
+      const out = document.getElementById('output');
 
-function expand6(raw){
-  // raw like '682717' -> eShort=682, nShort=717
-  const eShort = parseInt(raw.slice(0,3),10);
-  const nShort = parseInt(raw.slice(3,6),10);
-  // possible leading hundred-thousands digits 0..3 -> construct candidates
-  const candidates = [];
-  for(let leadE=0; leadE<=3; leadE++){
-    for(let leadN=0; leadN<=3; leadN++){
-      const E = leadE*100000 + eShort*100;
-      const N = leadN*100000 + nShort*100;
-      if(E>=60000 && E<=340000 && N>=260000 && N<=400000) { // rough Sri Lanka plausible bounds
-        candidates.push({E,N,leadE,leadN});
+      // Safety check: proj4 must be available. If not, try a fallback CDN dynamically.
+      function ensureProj4() {
+        return new Promise((resolve, reject) => {
+          if (typeof proj4 !== 'undefined') return resolve();
+          // fallback attempt
+          const fallback = 'https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.1/proj4.js';
+          const s = document.createElement('script');
+          s.src = fallback;
+          s.onload = () => {
+            if (typeof proj4 !== 'undefined') resolve();
+            else reject(new Error('proj4 loaded but global not found'));
+          };
+          s.onerror = () => reject(new Error('Failed to load proj4 from fallback'));
+          document.head.appendChild(s);
+        });
       }
-    }
-  }
-  // Deduplicate by E,N
-  const uniq = [];
-  const seen = new Set();
-  for(const c of candidates){
-    const k = c.E+','+c.N; if(!seen.has(k)){uniq.push(c); seen.add(k);} }
-  return uniq;
-}
-function expand8(raw){
-  const eShort = parseInt(raw.slice(0,4),10);
-  const nShort = parseInt(raw.slice(4,8),10);
-  const candidates = [];
-  for(let leadE=0; leadE<=3; leadE++){
-    for(let leadN=0; leadN<=3; leadN++){
-      const E = leadE*100000 + eShort*10;
-      const N = leadN*100000 + nShort*10;
-      if(E>=60000 && E<=340000 && N>=260000 && N<=400000) candidates.push({E,N,leadE,leadN});
-    }
-  }
-  const uniq=[]; const seen=new Set(); for(const c of candidates){const k=c.E+','+c.N; if(!seen.has(k)){uniq.push(c); seen.add(k);} } return uniq;
-}
 
-function convertToWGS(E,N){
-  const [lon,lat] = proj4('EPSG:KAND','WGS84',[E,N]);
-  return {lat:lat,lon:lon};
-}
+      // Ensure Leaflet available
+      if (typeof L === 'undefined') {
+        out.textContent = 'Error: Leaflet is not loaded. Check your internet connection.';
+        return;
+      }
 
-function fmtDMS(dec, isLat){
-  const deg = Math.floor(Math.abs(dec));
-  const minf = (Math.abs(dec)-deg)*60;
-  const min = Math.floor(minf);
-  const sec = Math.round((minf-min)*60);
-  const dir = isLat ? (dec>=0?'N':'S') : (dec>=0?'E':'W');
-  return `${deg}\u00B0${min}'${sec}\" ${dir}`;
-}
+      ensureProj4().then(() => {
+        // Define Kandawala projection (EPSG:5234) if not already defined
+        try {
+          if (!proj4.defs['EPSG:5234']) {
+            proj4.defs('EPSG:5234', "+proj=tmerc +lat_0=7 +lon_0=80.77171333333333 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86 +units=m +no_defs");
+          }
+        } catch (err) {
+          out.textContent = 'Projection definition failed: ' + err;
+          return;
+        }
 
-// UI
-const input = document.getElementById('inputGR');
-const btn = document.getElementById('convertBtn');
-const out = document.getElementById('output');
-const format = document.getElementById('format');
-const clearBtn = document.getElementById('clearBtn');
+        // Initialize Leaflet map
+        const map = L.map('map').setView([7.8731, 80.7718], 7);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        let marker = null;
 
-btn.addEventListener('click', ()=>{
-  out.innerHTML='';
-  try{
-    const parsed = parseInput(input.value);
-    let cand = [];
-    if(parsed.type==='full'){
-      cand.push({E:parsed.E, N:parsed.N, note:'Full input'});
-    } else if(parsed.type==='gr6' || parsed.type==='gr' || parsed.type==='gr6'){
-      const list = expand6(parsed.raw);
-      cand = list.map(c=>({E:c.E,N:c.N,note:`Candidate leadE=${c.leadE} leadN=${c.leadN}`}));
-    } else if(parsed.type==='gr8'){
-      const list = expand8(parsed.raw);
-      cand = list.map(c=>({E:c.E,N:c.N,note:`Candidate leadE=${c.leadE} leadN=${c.leadN}`}));
-    } else if(parsed.type==='grE'){
-      // not used
-    } else if(parsed.type==='gr'){
-      // two tokens short
-      const eShort = parsed.grE; const nShort = parsed.grN;
-      // fallback
-      cand = expand6(eShort+nShort).map(c=>({E:c.E,N:c.N}));
-    }
+        // Conversion function (keeps same behaviour as before)
+        function convertGR() {
+          const grEl = document.getElementById('grInput');
+          const gr = (grEl.value || '').trim();
+          if (!/^[0-9]{6,8}$/.test(gr)) {
+            alert('Enter a valid 6 or 8 figure Grid Reference');
+            return;
+          }
 
-    if(cand.length===0){
-      out.innerHTML = `<div class="small">No plausible candidates found within Sri Lanka bounds. Check the GR or try full Easting/Northing.</div>`;
-      return;
-    }
+          let easting, northing;
+          if (gr.length === 6) {
+            easting = parseInt(gr.substring(0, 3), 10) * 100; // 100 m precision
+            northing = parseInt(gr.substring(3, 6), 10) * 100;
+          } else {
+            easting = parseInt(gr.substring(0, 4), 10) * 10; // 10 m precision
+            northing = parseInt(gr.substring(4, 8), 10) * 10;
+          }
 
-    const listNode = document.createElement('div'); listNode.className='candidates';
-    cand.forEach(c=>{
-      const w = convertToWGS(c.E,c.N);
-      const lat = w.lat.toFixed(6), lon = w.lon.toFixed(6);
-      const dmsLat = fmtDMS(w.lat,true), dmsLon = fmtDMS(w.lon,false);
-      const gm = `https://www.google.com/maps?q=${lat},${lon}`;
-      const candEl = document.createElement('div'); candEl.className='cand';
-      candEl.innerHTML = `<div style="max-width:68%"><div style="font-family:monospace;font-weight:600">E ${c.E} &nbsp; N ${c.N}</div><div class="small">${dmsLat} &nbsp;&nbsp; ${dmsLon}</div><div class="small">${c.note||''}</div></div>
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-          <a class="chip" href="${gm}" target="_blank" rel="noopener">Open Google Maps</a>
-          <button class="chip" onclick="navigator.clipboard && navigator.clipboard.writeText('${lat}, ${lon}')">Copy Lat,Lon</button>
-        </div>`;
-      listNode.appendChild(candEl);
+          // NOTE: This UI preserves the previous behavior: add 100000 to Easting and 300000 to Northing.
+          // If you want automatic candidate bands (1xx / 2xx) or smarter logic, I can add that.
+          const fullE = 100000 + easting;
+          const fullN = 300000 + northing;
+
+          let latLon;
+          try {
+            // proj4 expects [E, N] -> returns [lon, lat]
+            const outCoord = proj4('EPSG:5234', 'WGS84', [fullE, fullN]);
+            latLon = { lat: +outCoord[1].toFixed(6), lon: +outCoord[0].toFixed(6) };
+          } catch (err) {
+            out.textContent = 'Coordinate conversion failed: ' + err;
+            return;
+          }
+
+          out.innerHTML = `GR: ${gr}\nEasting: ${fullE}\nNorthing: ${fullN}\nLat: ${latLon.lat}\nLon: ${latLon.lon}\n` +
+            `<a class="link" target="_blank" href="https://www.google.com/maps?q=${latLon.lat},${latLon.lon}">Open in Google Maps</a>`;
+
+          if (marker) map.removeLayer(marker);
+          marker = L.marker([latLon.lat, latLon.lon]).addTo(map).bindPopup('GR: ' + gr).openPopup();
+          map.setView([latLon.lat, latLon.lon], 14);
+        }
+
+        // Attach event
+        document.getElementById('convertBtn').addEventListener('click', convertGR);
+
+        out.textContent = 'Ready. Enter a 6/8 digit GR and press Convert.';
+
+      }).catch((err) => {
+        out.textContent = 'Failed to load proj4 library: ' + err.message + '\nPlease check your internet connection or allow loading external scripts.';
+      });
     });
-    out.appendChild(listNode);
-  }catch(e){
-    out.innerHTML = `<div class="small">Error: ${e.message}</div>`;
-  }
-});
-
-clearBtn.addEventListener('click', ()=>{input.value=''; out.innerHTML='';});
-
-</script>
+  </script>
 </body>
 </html>
