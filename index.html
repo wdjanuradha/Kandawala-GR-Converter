@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Kandawala GR Converter</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Leaflet CSS from a reliable CDN -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     body {
@@ -53,124 +53,97 @@
       border-radius: 6px;
       white-space: pre-wrap;
     }
-    a.link{ color: #00ff99 }
+    a.link { color: #00ff99; }
   </style>
 </head>
 <body>
   <header>
     <h1>🇱🇰 Kandawala Grid Converter</h1>
-    <p>Military-Style GR → Google Maps</p>
+    <p>Military-Style Grid Ref → Google Maps</p>
   </header>
 
   <div class="container">
-    <label>Enter 6/8 Fig GR:</label>
-    <input type="text" id="grInput" placeholder="Example: 682717" value="682717">
+    <label for="grInput">Enter 6/8 Fig GR:</label>
+    <input type="text" id="grInput" placeholder="Example: 682717" value="682717" />
     <button id="convertBtn">Convert</button>
 
     <div class="output" id="output">Status: waiting for input...</div>
-
     <div id="map"></div>
   </div>
 
-  <!-- Load Leaflet and proj4 from reliable CDNs BEFORE running the script below -->
+  <!-- Leaflet and Proj4 -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/proj4@2.8.1/dist/proj4.js"></script>
+  <script src="https://unpkg.com/proj4@2.9.1/dist/proj4.js"></script>
 
   <script>
-    // Wrap initialization so we only run after window load and after proj4 & Leaflet are available
     window.addEventListener('load', function () {
       const out = document.getElementById('output');
 
-      // Safety check: proj4 must be available. If not, try a fallback CDN dynamically.
-      function ensureProj4() {
-        return new Promise((resolve, reject) => {
-          if (typeof proj4 !== 'undefined') return resolve();
-          // fallback attempt
-          const fallback = 'https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.1/proj4.js';
-          const s = document.createElement('script');
-          s.src = fallback;
-          s.onload = () => {
-            if (typeof proj4 !== 'undefined') resolve();
-            else reject(new Error('proj4 loaded but global not found'));
-          };
-          s.onerror = () => reject(new Error('Failed to load proj4 from fallback'));
-          document.head.appendChild(s);
-        });
-      }
-
-      // Ensure Leaflet available
       if (typeof L === 'undefined') {
-        out.textContent = 'Error: Leaflet is not loaded. Check your internet connection.';
+        out.textContent = 'Error: Leaflet is not loaded.';
         return;
       }
 
-      ensureProj4().then(() => {
-        // Define Kandawala projection (EPSG:5234) if not already defined
-        try {
-          if (!proj4.defs['EPSG:5234']) {
-            proj4.defs('EPSG:5234', "+proj=tmerc +lat_0=7 +lon_0=80.77171333333333 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86 +units=m +no_defs");
-          }
-        } catch (err) {
-          out.textContent = 'Projection definition failed: ' + err;
+      if (typeof proj4 === 'undefined') {
+        out.textContent = 'Error: proj4 is not loaded.';
+        return;
+      }
+
+      // Define EPSG:5234 exactly per WKT (Everest 1830, Kandawala Datum)
+      proj4.defs("EPSG:5234", "+proj=tmerc +lat_0=7.00048027777778 +lon_0=80.7717111111111 +k=0.9999238418 +x_0=200000 +y_0=200000 +a=6377276.345 +rf=300.8017 +towgs84=-97,787,86,0,0,0,0 +units=m +no_defs");
+
+      // Map setup
+      const map = L.map('map').setView([7.8731, 80.7718], 7);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      let marker = null;
+
+      function convertGR() {
+        const gr = (document.getElementById('grInput').value || '').trim();
+
+        if (!/^\d{6,8}$/.test(gr)) {
+          alert('Enter a valid 6 or 8 digit grid reference (e.g., 682717 or 68227177)');
           return;
         }
 
-        // Initialize Leaflet map
-        const map = L.map('map').setView([7.8731, 80.7718], 7);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-        let marker = null;
+        let easting, northing;
+        if (gr.length === 6) {
+          easting = parseInt(gr.slice(0, 3)) * 100;
+          northing = parseInt(gr.slice(3, 6)) * 100;
+        } else {
+          easting = parseInt(gr.slice(0, 4)) * 10;
+          northing = parseInt(gr.slice(4, 8)) * 10;
+        }
 
-        // Conversion function (keeps same behaviour as before)
-        function convertGR() {
-          const grEl = document.getElementById('grInput');
-          const gr = (grEl.value || '').trim();
-          if (!/^[0-9]{6,8}$/.test(gr)) {
-            alert('Enter a valid 6 or 8 figure Grid Reference');
-            return;
-          }
+        // Add grid band offsets — default used in Sri Lankan mapping conventions
+        const fullE = 100000 + easting;
+        const fullN = 300000 + northing;
 
-          let easting, northing;
-          if (gr.length === 6) {
-            easting = parseInt(gr.substring(0, 3), 10) * 100; // 100 m precision
-            northing = parseInt(gr.substring(3, 6), 10) * 100;
-          } else {
-            easting = parseInt(gr.substring(0, 4), 10) * 10; // 10 m precision
-            northing = parseInt(gr.substring(4, 8), 10) * 10;
-          }
+        try {
+          const [lon, lat] = proj4('EPSG:5234', 'WGS84', [fullE, fullN]);
+          const latLon = {
+            lat: +lat.toFixed(6),
+            lon: +lon.toFixed(6)
+          };
 
-          // NOTE: This UI preserves the previous behavior: add 100000 to Easting and 300000 to Northing.
-          // If you want automatic candidate bands (1xx / 2xx) or smarter logic, I can add that.
-          const fullE = 100000 + easting;
-          const fullN = 300000 + northing;
-
-          let latLon;
-          try {
-            // proj4 expects [E, N] -> returns [lon, lat]
-            const outCoord = proj4('EPSG:5234', 'WGS84', [fullE, fullN]);
-            latLon = { lat: +outCoord[1].toFixed(6), lon: +outCoord[0].toFixed(6) };
-          } catch (err) {
-            out.textContent = 'Coordinate conversion failed: ' + err;
-            return;
-          }
-
-          out.innerHTML = `GR: ${gr}\nEasting: ${fullE}\nNorthing: ${fullN}\nLat: ${latLon.lat}\nLon: ${latLon.lon}\n` +
-            `<a class="link" target="_blank" href="https://www.google.com/maps?q=${latLon.lat},${latLon.lon}">Open in Google Maps</a>`;
+          out.innerHTML = `📍 Grid Reference: ${gr}
+Easting: ${fullE}
+Northing: ${fullN}
+Latitude: ${latLon.lat}
+Longitude: ${latLon.lon}
+🔗 <a class="link" target="_blank" href="https://www.google.com/maps?q=${latLon.lat},${latLon.lon}">Open in Google Maps</a>`;
 
           if (marker) map.removeLayer(marker);
           marker = L.marker([latLon.lat, latLon.lon]).addTo(map).bindPopup('GR: ' + gr).openPopup();
           map.setView([latLon.lat, latLon.lon], 14);
+        } catch (err) {
+          out.textContent = 'Conversion failed: ' + err.message;
         }
+      }
 
-        // Attach event
-        document.getElementById('convertBtn').addEventListener('click', convertGR);
-
-        out.textContent = 'Ready. Enter a 6/8 digit GR and press Convert.';
-
-      }).catch((err) => {
-        out.textContent = 'Failed to load proj4 library: ' + err.message + '\nPlease check your internet connection or allow loading external scripts.';
-      });
+      document.getElementById('convertBtn').addEventListener('click', convertGR);
+      out.textContent = 'Ready. Enter a 6 or 8 digit grid reference and press Convert.';
     });
   </script>
 </body>
